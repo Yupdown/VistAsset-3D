@@ -22,7 +22,7 @@ void main()
 {
 	vert_Position = vec3(model_Transform * vec4(in_Position, 1.0));
 	gl_Position = proj_Transform * view_Transform * vec4(vert_Position, 1.0);
-	vert_Color = in_Color;
+	vert_Color = in_Color * 0.5 + 0.5;
 	vert_Normal = vec3(model_Transform * vec4(in_Normal, 0.0));
 	vert_UV = in_UV;
 } 

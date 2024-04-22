@@ -8,82 +8,14 @@ from random import random
 from time import time
 from OpenGL.GL import *
 import glm
-import numpy as np
 import glfw
 import imgui
 import sys
-import ctypes
-import pyassimp as assimp
+import mesh
 
 C = 0.01
 L = int(pi * 2 * 100)
 
-
-def gen_buffer():
-    vertices = []
-    colors = []
-    normals = []
-    uvs = []
-    indices = []
-
-    with assimp.load("Resources/yup.obj") as scene:
-        mesh = scene.meshes[0]
-
-    colors.extend((1.0, 0.0, 0.0))
-
-    for i in range(len(mesh.vertices)):
-        vertices.extend(mesh.vertices[i])
-        colors.extend(mesh.normals[i])
-        normals.extend(mesh.normals[i])
-        uvs.extend(mesh.texturecoords[0][i])
-
-    for i in range(len(mesh.faces)):
-        indices.extend(mesh.faces[i])
-
-    vertices = np.array(vertices, dtype=np.float32)
-    colors = np.array(colors, dtype=np.float32)
-    normals = np.array(normals, dtype=np.float32)
-    uvs = np.array(uvs, dtype=np.float32)
-    indices = np.array(indices, dtype=np.uint32)
-
-    vao = glGenVertexArrays(1)
-    vbo = glGenBuffers(4)
-    ebo = glGenBuffers(1)
-    glBindVertexArray(vao)
-
-    # position
-    glBindBuffer(GL_ARRAY_BUFFER, vbo[0])
-    glBufferData(GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL_STATIC_DRAW)
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, ctypes.c_void_p(0))
-    glEnableVertexAttribArray(0)
-
-    # color
-    glBindBuffer(GL_ARRAY_BUFFER, vbo[1])
-    glBufferData(GL_ARRAY_BUFFER, colors.nbytes, colors, GL_STATIC_DRAW)
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, ctypes.c_void_p(12))
-    glEnableVertexAttribArray(1)
-
-    # normals
-    glBindBuffer(GL_ARRAY_BUFFER, vbo[2])
-    glBufferData(GL_ARRAY_BUFFER, normals.nbytes, normals, GL_STATIC_DRAW)
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, ctypes.c_void_p(24))
-    glEnableVertexAttribArray(2)
-
-    # uv
-    glBindBuffer(GL_ARRAY_BUFFER, vbo[3])
-    glBufferData(GL_ARRAY_BUFFER, uvs.nbytes, uvs, GL_STATIC_DRAW)
-    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 0, ctypes.c_void_p(36))
-    glEnableVertexAttribArray(3)
-
-    # indices
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo)
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices, GL_STATIC_DRAW)
-
-    glBindVertexArray(0)
-    glBindBuffer(GL_ARRAY_BUFFER, 0)
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0)
-
-    return vao, len(mesh.faces) * 3
 
 
 def gen_global_vbo():
@@ -130,7 +62,7 @@ def main():
     imgui.create_context()
     impl = GlfwRenderer(window)
 
-    vao, num_indices = gen_buffer()
+    model = mesh.Mesh("Resources/mesh/yup.obj")
     shader_program = gen_shader()
     guid = gen_global_vbo()
 
@@ -141,10 +73,25 @@ def main():
     glEnable(GL_DEPTH_TEST)
     glEnable(GL_CULL_FACE)
 
+    mouse_pos_current = (0, 0)
+    mouse_pos_last = (0, 0)
+    mouse_pos_drag = (0, 0)
+    mouse_scroll_integral = 0
+
     while not glfw.window_should_close(window):
         glfw.poll_events()
         impl.process_inputs()
 
+        io = imgui.get_io()
+        mouse_pos_last = mouse_pos_current
+        mouse_pos_current = io.mouse_pos.x, io.mouse_pos.y
+        if io.mouse_down[0]:
+            mouse_pos_drag = (
+                mouse_pos_drag[0] + mouse_pos_current[0] - mouse_pos_last[0],
+                mouse_pos_drag[1] + mouse_pos_current[1] - mouse_pos_last[1],
+            )
+
+        mouse_scroll_integral += io.mouse_wheel
         imgui.new_frame()
 
         imgui.begin("Plot example")
@@ -154,7 +101,7 @@ def main():
             overlay_text="SIN() over time",
             # offset by one item every milisecond, plot values
             # buffer its end wraps around
-            values_offset=int(time() * 100) % L,
+            values_offset=int(time() * 1000) % L,
             # 0=autoscale => (0, 50) = (autoscale width, 50px height)
             graph_size=(0, 50),
         )
@@ -170,8 +117,8 @@ def main():
 
         imgui.end()
 
-        screen_size = imgui.get_io().display_size
-        aspect_ratio = screen_size.x / screen_size.y
+        screen_size = io.display_size
+        aspect_ratio = screen_size.x / screen_size.y if screen_size.y != 0.0 else 1.0
 
         glClearColor(1.0, 1.0, 1.0, 1)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
@@ -179,8 +126,9 @@ def main():
 
         glUseProgram(shader_program)
 
-        worldMatrix = glm.mat4(1.0)
-        worldMatrix = glm.rotate(worldMatrix, glfw.get_time(), glm.vec3(0, 1, 0))
+        worldMatrix = glm.scale(glm.mat4(1), glm.vec3(1 + mouse_scroll_integral * 0.01))
+        worldMatrix = glm.rotate(worldMatrix, mouse_pos_drag[1] * 0.01, glm.vec3(1, 0, 0))
+        worldMatrix = glm.rotate(worldMatrix, mouse_pos_drag[0] * 0.01, glm.vec3(0, 1, 0))
 
         viewMatrix = glm.lookAt(glm.vec3(0, 10, 10), glm.vec3(0, 4, 0), glm.vec3(0, 1, 0))
         projectionMatrix = glm.perspective(glm.radians(45), aspect_ratio, 0.1, 100.0)
@@ -194,8 +142,8 @@ def main():
         modelLocation = glGetUniformLocation(shader_program, "model_Transform")
         glUniformMatrix4fv(modelLocation, 1, GL_FALSE, glm.value_ptr(worldMatrix))
 
-        glBindVertexArray(vao)
-        glDrawElements(GL_TRIANGLES, num_indices, GL_UNSIGNED_INT, None)
+        glBindVertexArray(model.vao)
+        glDrawElements(GL_TRIANGLES, len(model.indices), GL_UNSIGNED_INT, None)
 
         imgui.render()
         impl.render(imgui.get_draw_data())
@@ -207,7 +155,7 @@ def main():
 
 def impl_glfw_init():
     width, height = 1280, 720
-    window_name = "minimal ImGui/GLFW3 example"
+    window_name = "VistAsset 3D"
 
     if not glfw.init():
         print("Could not initialize OpenGL context")
