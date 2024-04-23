@@ -12,6 +12,7 @@ import glfw
 import imgui
 import sys
 import mesh
+from tkinter import filedialog
 
 C = 0.01
 L = int(pi * 2 * 100)
@@ -57,12 +58,17 @@ def destroy_buffer():
     glDeleteVertexArrays(1)
 
 
+def open_file():
+    file_path = filedialog.askopenfilename(title="Open Model File")
+    return file_path
+
+
 def main():
     window = impl_glfw_init()
     imgui.create_context()
     impl = GlfwRenderer(window)
 
-    model = mesh.Mesh("Resources/mesh/yup.obj")
+    model = mesh.Mesh("Resources/yup.obj")
     shader_program = gen_shader()
     guid = gen_global_vbo()
 
@@ -85,14 +91,31 @@ def main():
         io = imgui.get_io()
         mouse_pos_last = mouse_pos_current
         mouse_pos_current = io.mouse_pos.x, io.mouse_pos.y
-        if io.mouse_down[0]:
-            mouse_pos_drag = (
-                mouse_pos_drag[0] + mouse_pos_current[0] - mouse_pos_last[0],
-                mouse_pos_drag[1] + mouse_pos_current[1] - mouse_pos_last[1],
-            )
 
-        mouse_scroll_integral += io.mouse_wheel
+        # if mouse is not captured by imgui, we can drag the model.
+        if not io.want_capture_mouse:
+            if io.mouse_down[0]:
+                mouse_pos_drag = (
+                    mouse_pos_drag[0] + mouse_pos_current[0] - mouse_pos_last[0],
+                    mouse_pos_drag[1] + mouse_pos_current[1] - mouse_pos_last[1],
+                )
+            mouse_scroll_integral += io.mouse_wheel
         imgui.new_frame()
+
+        # file open dialog
+        if imgui.begin_main_menu_bar():
+            if imgui.begin_menu("File", True):
+                clicked_open, selected_open = imgui.menu_item("Open", "Ctrl+O", False, True)
+                clicked_quit, selected_quit = imgui.menu_item("Quit", "Cmd+Q", False, True)
+                if clicked_open:
+                    file_path = open_file()
+                    del model
+                    model = mesh.Mesh(file_path)
+
+                if clicked_quit:
+                    glfw.set_window_should_close(window, True)
+                imgui.end_menu()
+            imgui.end_main_menu_bar()
 
         imgui.begin("Plot example")
         imgui.plot_lines(

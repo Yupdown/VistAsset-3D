@@ -19,6 +19,15 @@ class Mesh:
             self.load_data(path)
             self.gen_buffer()
 
+    def __del__(self):
+        # if self.vao:
+        #     glDeleteVertexArrays(1, self.vao)
+        # if self.vbo:
+        #     glDeleteBuffers(4, self.vbo)
+        # if self.ebo:
+        #     glDeleteBuffers(1, self.ebo)
+        pass
+
     def load_data(self, path):
         with assimp.load(path) as scene:
             if not scene:
@@ -30,7 +39,10 @@ class Mesh:
             self.vertices.extend(mesh.vertices[i])
             self.colors.extend(mesh.normals[i])
             self.normals.extend(mesh.normals[i])
-            self.uvs.extend(mesh.texturecoords[0][i])
+            if mesh.texturecoords.any():
+                self.uvs.extend(mesh.texturecoords[0][i])
+            else:
+                self.uvs.extend((0.0, 0.0))
 
         for i in range(len(mesh.faces)):
             self.indices.extend(mesh.faces[i])
