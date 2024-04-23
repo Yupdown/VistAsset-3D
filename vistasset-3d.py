@@ -13,10 +13,11 @@ import imgui
 import sys
 import mesh
 from tkinter import filedialog
+import logging
 
 C = 0.01
 L = int(pi * 2 * 100)
-
+logging.basicConfig(level=logging.INFO)
 
 
 def gen_global_vbo():
@@ -59,7 +60,13 @@ def destroy_buffer():
 
 
 def open_file():
-    file_path = filedialog.askopenfilename(title="Open Model File")
+    # open 'extensions.txt' file and read all extensions
+
+    with open("extensions.txt", "r") as file:
+        extensions_str = file.read()
+
+    extensions = [("Assimp Assets", extensions_str), ("All Files", ".*")]
+    file_path = filedialog.askopenfilename(title="Open Model File", filetypes=extensions)
     return file_path
 
 
@@ -68,7 +75,7 @@ def main():
     imgui.create_context()
     impl = GlfwRenderer(window)
 
-    model = mesh.Mesh("Resources/yup.obj")
+    model = mesh.Mesh("Resources/mesh/yup.obj")
     shader_program = gen_shader()
     guid = gen_global_vbo()
 
@@ -97,8 +104,7 @@ def main():
             if io.mouse_down[0]:
                 mouse_pos_drag = (
                     mouse_pos_drag[0] + mouse_pos_current[0] - mouse_pos_last[0],
-                    mouse_pos_drag[1] + mouse_pos_current[1] - mouse_pos_last[1],
-                )
+                    mouse_pos_drag[1] + mouse_pos_current[1] - mouse_pos_last[1])
             mouse_scroll_integral += io.mouse_wheel
         imgui.new_frame()
 
@@ -109,9 +115,9 @@ def main():
                 clicked_quit, selected_quit = imgui.menu_item("Quit", "Cmd+Q", False, True)
                 if clicked_open:
                     file_path = open_file()
-                    del model
-                    model = mesh.Mesh(file_path)
-
+                    if file_path:
+                        model.delete_buffers()
+                        model = mesh.Mesh(file_path)
                 if clicked_quit:
                     glfw.set_window_should_close(window, True)
                 imgui.end_menu()
@@ -149,11 +155,13 @@ def main():
 
         glUseProgram(shader_program)
 
-        worldMatrix = glm.scale(glm.mat4(1), glm.vec3(1 + mouse_scroll_integral * 0.01))
+
+        worldMatrix = glm.scale(glm.mat4(1), glm.vec3(0.5 / model.radius))
         worldMatrix = glm.rotate(worldMatrix, mouse_pos_drag[1] * 0.01, glm.vec3(1, 0, 0))
         worldMatrix = glm.rotate(worldMatrix, mouse_pos_drag[0] * 0.01, glm.vec3(0, 1, 0))
+        worldMatrix = glm.translate(worldMatrix, -glm.vec3(model.center))
 
-        viewMatrix = glm.lookAt(glm.vec3(0, 10, 10), glm.vec3(0, 4, 0), glm.vec3(0, 1, 0))
+        viewMatrix = glm.lookAt(glm.vec3(0, 1, 1), glm.vec3(0, 0, 0), glm.vec3(0, 1, 0))
         projectionMatrix = glm.perspective(glm.radians(45), aspect_ratio, 0.1, 100.0)
 
         # update global uniform buffer

@@ -2,6 +2,7 @@ from OpenGL.GL import *
 import ctypes
 import pyassimp as assimp
 import numpy as np
+import logging
 
 class Mesh:
     def __init__(self, path=None):
@@ -15,18 +16,17 @@ class Mesh:
         self.uvs = []
         self.indices = []
 
+        self.center = [0.0, 0.0, 0.0]
+        self.radius = 0.0
+
         if path:
             self.load_data(path)
             self.gen_buffer()
 
-    def __del__(self):
-        # if self.vao:
-        #     glDeleteVertexArrays(1, self.vao)
-        # if self.vbo:
-        #     glDeleteBuffers(4, self.vbo)
-        # if self.ebo:
-        #     glDeleteBuffers(1, self.ebo)
-        pass
+    def delete_buffers(self):
+        glDeleteVertexArrays(1, [self.vao])
+        glDeleteBuffers(4, self.vbo)
+        glDeleteBuffers(1, [self.ebo])
 
     def load_data(self, path):
         with assimp.load(path) as scene:
@@ -34,11 +34,21 @@ class Mesh:
                 raise Exception("No mesh in file")
             mesh = scene.meshes[0]
 
+        min_coords = [float('inf') for _ in range(3)]
+        max_coords = [-float('inf') for _ in range(3)]
+
         self.colors.extend((1.0, 0.0, 0.0))
         for i in range(len(mesh.vertices)):
+            for j in range(3):
+                min_coords[j] = min(min_coords[j], mesh.vertices[i][j])
+                max_coords[j] = max(max_coords[j], mesh.vertices[i][j])
             self.vertices.extend(mesh.vertices[i])
-            self.colors.extend(mesh.normals[i])
-            self.normals.extend(mesh.normals[i])
+            if mesh.normals.any():
+                self.normals.extend(mesh.normals[i])
+                self.colors.extend(mesh.normals[i])
+            else:
+                self.normals.extend((0.0, 0.0, 0.0))
+                self.colors.extend((0.0, 0.0, 0.0))
             if mesh.texturecoords.any():
                 self.uvs.extend(mesh.texturecoords[0][i])
             else:
@@ -46,6 +56,15 @@ class Mesh:
 
         for i in range(len(mesh.faces)):
             self.indices.extend(mesh.faces[i])
+
+        self.center = [(min_coords[i] + max_coords[i]) / 2 for i in range(3)]
+        self.radius = max([max_coords[i] - min_coords[i] for i in range(3)]) / 2
+
+        logging.log(logging.INFO, "Mesh loaded: %s" % path)
+        logging.log(logging.INFO, "Vertices: %d" % len(self.vertices))
+        logging.log(logging.INFO, "Indices: %d" % len(self.indices))
+        logging.log(logging.INFO, "Center: %s" % str(self.center))
+        logging.log(logging.INFO, "Radius: %f" % self.radius)
 
     def gen_buffer(self):
         np_vertices = np.array(self.vertices, dtype=np.float32)
