@@ -4,6 +4,7 @@ import pyassimp as assimp
 import numpy as np
 import logging
 
+
 class Mesh:
     def __init__(self, path=None):
         self.vao = None
@@ -33,6 +34,12 @@ class Mesh:
             if not scene:
                 raise Exception("No mesh in file")
             mesh = scene.meshes[0]
+
+        self.vertices = []
+        self.colors = []
+        self.normals = []
+        self.uvs = []
+        self.indices = []
 
         min_coords = [float('inf') for _ in range(3)]
         max_coords = [-float('inf') for _ in range(3)]

@@ -1,0 +1,1 @@
+.3d .3ds .3mf .3mf .ac .ac3d .acc .amf .ase .ask .b3d .blend .bvh .clara .collada .d3d .dae .dfx .dwf .dwfx .fbx .hmb .ifc .ifczip .irrmesh .irr .lwo .lws .lxo .md2 .md3 .md5 .mmd .ms3d .ndo .nff .obj .off .ogex .pk3 .ply .prj .q3o .q3s .raw .sia .sib .smd .stl .stp .ter .uc .vta .x .x3d .xgl .xml .zgl
