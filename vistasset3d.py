@@ -3,6 +3,7 @@
 
 from imgui.integrations.glfw import GlfwRenderer
 from OpenGL.GL import *
+from OpenGL.arrays import vbo
 import glm
 import glfw
 import imgui
@@ -10,7 +11,9 @@ import sys
 import imgui_menu
 import mesh
 from tkinter import filedialog
+import numpy
 import logging
+import shader
 
 logging.basicConfig(level=logging.INFO)
 window = None
@@ -18,6 +21,9 @@ window = None
 
 class Application:
     loaded_model = None
+    view_mode = "DEFAULT"
+    background_color = [0.3, 0.3, 0.3]
+    model_color = [1.0, 1.0, 1.0]
 
     @staticmethod
     def change_model(path):
@@ -45,6 +51,10 @@ class Application:
         glfw.set_window_should_close(window, True)
 
 
+def log_gl_debug_message(*args, **kwargs):
+    logging.log(logging.INFO, 'args = {0}, kwargs = {1}'.format(args, kwargs))
+
+
 def gen_global_vbo():
     guid = glGenBuffers(1)
     glBindBuffer(GL_UNIFORM_BUFFER, guid)
@@ -62,7 +72,6 @@ def create_axis_model():
         0, 0, 0, 0, 0, 10
     ]
     model_axis.colors = [
-        0, 0, 0,
         1, 0, 0, 1, 0, 0,
         0, 1, 0, 0, 1, 0,
         0, 0, 1, 0, 0, 1
@@ -73,35 +82,11 @@ def create_axis_model():
     for i in range(0, 21):
         x = i - 10
         model_axis.vertices.extend([-10, 0, x, 10, 0, x, x, 0, -10, x, 0, 10])
-        model_axis.colors.extend([0.5, 0.5, 0.5] * 4)
+        model_axis.colors.extend([0.4, 0.4, 0.4] * 4)
         model_axis.indices.extend([6 + i * 4, 7 + i * 4, 8 + i * 4, 9 + i * 4])
 
     model_axis.gen_buffer()
     return model_axis
-
-
-def gen_shader():
-    # load glsl from file
-    vertex_shader = open("Resources/vertex.glsl").read()
-    fragment_shader = open("Resources/fragment.glsl").read()
-
-    vertex = glCreateShader(GL_VERTEX_SHADER)
-    glShaderSource(vertex, vertex_shader)
-    glCompileShader(vertex)
-
-    fragment = glCreateShader(GL_FRAGMENT_SHADER)
-    glShaderSource(fragment, fragment_shader)
-    glCompileShader(fragment)
-
-    shader_program = glCreateProgram()
-    glAttachShader(shader_program, vertex)
-    glAttachShader(shader_program, fragment)
-    glLinkProgram(shader_program)
-
-    glDeleteShader(vertex)
-    glDeleteShader(fragment)
-
-    return shader_program
 
 
 def main():
@@ -111,19 +96,30 @@ def main():
     impl = GlfwRenderer(window)
     imgui_menu.init_menu()
 
+    glDebugMessageCallback(GLDEBUGPROC(log_gl_debug_message), None)
     Application.loaded_model = mesh.Mesh("Resources/suzanne.obj")
+
     model_axis = create_axis_model()
-    shader_program = gen_shader()
+
+    shaders = dict()
+    shaders["DEFAULT"] = shader.Shader("Resources/vertex_default.glsl", "Resources/fragment_default.glsl")
+    shaders["NORMAL"] = shader.Shader("Resources/vertex_normal.glsl", "Resources/fragment.glsl")
+    shaders["UV"] = shader.Shader("Resources/vertex_uv.glsl", "Resources/fragment.glsl")
+    shaders["AXIS"] = shader.Shader("Resources/vertex_axis.glsl", "Resources/fragment.glsl")
+
+    for shader_program in shaders.values():
+        shader_program.load_shaders()
+
     guid = gen_global_vbo()
 
     glEnable(GL_MULTISAMPLE)
     glEnable(GL_DEPTH_TEST)
-    glEnable(GL_CULL_FACE)
 
     mouse_pos_current = (0, 0)
     mouse_pos_last = (0, 0)
     mouse_pos_drag = (0, 0)
     mouse_scroll_integral = 0
+    current_scale = 1.0
 
     while not glfw.window_should_close(window):
         glfw.poll_events()
@@ -140,20 +136,23 @@ def main():
                     mouse_pos_drag[0] + mouse_pos_current[0] - mouse_pos_last[0],
                     mouse_pos_drag[1] + mouse_pos_current[1] - mouse_pos_last[1])
             mouse_scroll_integral += io.mouse_wheel
+            mouse_scroll_integral = max(-10, min(10, mouse_scroll_integral))
 
         screen_size = io.display_size
         aspect_ratio = screen_size.x / screen_size.y if screen_size.y != 0.0 else 1.0
 
-        glClearColor(1.0, 1.0, 1.0, 1)
+        glClearColor(*Application.background_color, 1.0)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glViewport(0, 0, int(screen_size.x), int(screen_size.y))
 
-        glUseProgram(shader_program)
         imgui_menu.draw_menu(Application)
 
         loaded_model = Application.loaded_model
+        scale_factor = 0.5 + mouse_scroll_integral * 0.05
+        target_scale = scale_factor / loaded_model.radius
+        current_scale = glm.lerp(current_scale, target_scale, 0.1)
 
-        world_matrix = glm.scale(glm.mat4(1), glm.vec3(0.5 / loaded_model.radius))
+        world_matrix = glm.scale(glm.mat4(1), glm.vec3(current_scale))
         world_matrix = glm.rotate(world_matrix, mouse_pos_drag[1] * 0.01, glm.vec3(1, 0, 0))
         world_matrix = glm.rotate(world_matrix, mouse_pos_drag[0] * 0.01, glm.vec3(0, 1, 0))
         world_matrix = glm.translate(world_matrix, -glm.vec3(loaded_model.center))
@@ -167,11 +166,30 @@ def main():
         glBufferSubData(GL_UNIFORM_BUFFER, 64, 64, glm.value_ptr(projection_matrix))
         glBindBuffer(GL_UNIFORM_BUFFER, 0)
 
-        modelLocation = glGetUniformLocation(shader_program, "model_Transform")
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE if Application.view_mode == "WIREFRAME" else GL_FILL)
+
+        shader_program = shaders["DEFAULT"]
+        if Application.view_mode == "NORMAL":
+            shader_program = shaders["NORMAL"]
+        elif Application.view_mode == "UV":
+            shader_program = shaders["UV"]
+
+        glUseProgram(shader_program.active_shader)
+        modelLocation = glGetUniformLocation(shader_program.active_shader, "model_Transform")
         glUniformMatrix4fv(modelLocation, 1, GL_FALSE, glm.value_ptr(world_matrix))
+
+        modelLocation = glGetUniformLocation(shader_program.active_shader, "model_Color")
+        glUniform3f(modelLocation, *Application.model_color)
 
         glBindVertexArray(loaded_model.vao)
         glDrawElements(GL_TRIANGLES, len(loaded_model.indices), GL_UNSIGNED_INT, None)
+
+        shader_program_axis = shaders["AXIS"]
+
+        glUseProgram(shader_program_axis.active_shader)
+        modelLocation = glGetUniformLocation(shader_program_axis.active_shader, "model_Transform")
+        glUniformMatrix4fv(modelLocation, 1, GL_FALSE, glm.value_ptr(world_matrix))
+
         glBindVertexArray(model_axis.vao)
         glDrawElements(GL_LINES, len(model_axis.indices), GL_UNSIGNED_INT, None)
 
@@ -196,7 +214,6 @@ def impl_glfw_init():
     glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 3)
     glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)
     glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
-
     glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, GL_TRUE)
 
     # Enable Multi Sample Anti Aliasing

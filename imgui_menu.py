@@ -1,3 +1,4 @@
+import tkinter.messagebox
 from array import array
 import imgui
 from math import sin, pi
@@ -5,18 +6,12 @@ from random import random
 from time import time
 from vistasset3d import *
 
-C = 0.01
-L = int(pi * 2 * 100)
-
-plot_values = None
 histogram_values = None
 
 
 def init_menu():
-    global plot_values, histogram_values
-
-    plot_values = array("f", [sin(x * C) for x in range(L)])
-    histogram_values = array("f", [random() for _ in range(20)])
+    global histogram_values
+    histogram_values = array("f", [0 for _ in range(128)])
 
 
 def draw_menu(Application):
@@ -32,27 +27,71 @@ def draw_menu(Application):
             if clicked_quit:
                 Application.quit_application()
             imgui.end_menu()
+        if imgui.begin_menu("Help", True):
+            clicked_about, selected_about = imgui.menu_item("About", "Ctrl+H", False, True)
+            if clicked_about:
+                tkinter.messagebox.showinfo("About", "This is a simple 3D model viewer using OpenGL and ImGui\nAuthor: Doyup Kim")
+            imgui.end_menu()
         imgui.end_main_menu_bar()
 
-    imgui.begin("Plot example")
-    imgui.plot_lines(
-        "Sin(t)",
-        plot_values,
-        overlay_text="SIN() over time",
-        # offset by one item every milisecond, plot values
-        # buffer its end wraps around
-        values_offset=int(time() * 1000) % L,
-        # 0=autoscale => (0, 50) = (autoscale width, 50px height)
-        graph_size=(0, 50),
+    # Making ImGui tab to stick on the left side
+    # its height is screen height - 20
+    imgui.set_next_window_position(0, 20)
+    imgui.set_next_window_size(200, 400)
+    imgui.begin("Control Panel", False, imgui.WINDOW_NO_RESIZE)
+
+    # radio buttens to change rendering mode
+
+    radio_params = (
+        ("Default", "DEFAULT"),
+        ("Wireframe", "WIREFRAME"),
+        ("Normal", "NORMAL"),
+        ("UV", "UV")
     )
 
-    imgui.plot_histogram(
-        "histogram(random())",
-        histogram_values,
-        overlay_text="random histogram",
-        # offset by one item every milisecond, plot values
-        # buffer its end wraps around
-        graph_size=(0, 50),
-    )
+    imgui.text("View Mode")
 
+    for label, mode in radio_params:
+        clicked = imgui.radio_button(label, Application.view_mode == mode)
+        if clicked:
+            Application.view_mode = mode
+
+    imgui.new_line()
+    imgui.separator()
+
+    # color picker to change background color
+    Application.model_color = imgui.color_edit3("Model Color", *Application.model_color, imgui.COLOR_EDIT_NO_INPUTS)[1]
+    Application.background_color = imgui.color_edit3("Background Color", *Application.background_color, imgui.COLOR_EDIT_NO_INPUTS)[1]
+
+    imgui.end()
+
+    # Making ImGui tab to stick on the right side
+    # its height is fixed to 200
+    imgui.set_next_window_position(imgui.get_io().display_size.x - 200, 20)
+    imgui.set_next_window_size(200, 400)
+    imgui.begin("Statistics", False, imgui.WINDOW_NO_RESIZE)
+
+    # Model statistics
+    imgui.text("Model Statistics")
+    imgui.text("Vertices: %d" % len(Application.loaded_model.vertices))
+    imgui.text("Indices: %d" % len(Application.loaded_model.indices))
+
+    imgui.new_line()
+    imgui.separator()
+
+    fpms = imgui.get_io().framerate
+    ftime = 1000 / fpms
+
+    histogram_values[:-1] = histogram_values[1:]
+    histogram_values[-1] = ftime
+
+    # Performance statistics
+    imgui.text("Performance")
+    imgui.text("FPS: %d" % fpms)
+    imgui.text("Frame Time: %.3f ms" % ftime)
+
+    imgui.new_line()
+    imgui.separator()
+
+    imgui.plot_lines("", histogram_values, overlay_text="Frame Time Status", graph_size=(200, 200))
     imgui.end()

@@ -12,6 +12,7 @@ layout(std140, binding = 0) uniform GlobalUniform
 };
 
 uniform mat4 model_Transform;
+uniform vec3 model_Color;
 
 out vec3 vert_Position;
 out vec3 vert_Normal;
@@ -22,7 +23,7 @@ void main()
 {
 	vert_Position = vec3(model_Transform * vec4(in_Position, 1.0));
 	gl_Position = proj_Transform * view_Transform * vec4(vert_Position, 1.0);
+	vert_Color = vec4(in_Color * model_Color, 1.0);
 	vert_Normal = vec3(model_Transform * vec4(in_Normal, 0.0));
-	vert_Color = vec4(in_Color, 1.0);
 	vert_UV = in_UV;
-} 
+}
