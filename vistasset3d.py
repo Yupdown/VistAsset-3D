@@ -76,6 +76,8 @@ def create_axis_model():
         0, 1, 0, 0, 1, 0,
         0, 0, 1, 0, 0, 1
     ]
+    model_axis.uvs = [0] * 12
+    model_axis.normals = [0] * 18
     model_axis.indices = [0, 1, 2, 3, 4, 5]
 
     # Add grids
@@ -83,6 +85,8 @@ def create_axis_model():
         x = i - 10
         model_axis.vertices.extend([-10, 0, x, 10, 0, x, x, 0, -10, x, 0, 10])
         model_axis.colors.extend([0.4, 0.4, 0.4] * 4)
+        model_axis.normals.extend([0] * 12)
+        model_axis.uvs.extend([0] * 8)
         model_axis.indices.extend([6 + i * 4, 7 + i * 4, 8 + i * 4, 9 + i * 4])
 
     model_axis.gen_buffer()
@@ -169,26 +173,27 @@ def main():
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE if Application.view_mode == "WIREFRAME" else GL_FILL)
 
         shader_program = shaders["DEFAULT"]
+        shader_program_axis = shaders["AXIS"]
         if Application.view_mode == "NORMAL":
             shader_program = shaders["NORMAL"]
         elif Application.view_mode == "UV":
             shader_program = shaders["UV"]
 
         glUseProgram(shader_program.active_shader)
-        modelLocation = glGetUniformLocation(shader_program.active_shader, "model_Transform")
-        glUniformMatrix4fv(modelLocation, 1, GL_FALSE, glm.value_ptr(world_matrix))
 
-        modelLocation = glGetUniformLocation(shader_program.active_shader, "model_Color")
-        glUniform3f(modelLocation, *Application.model_color)
+        model_location = glGetUniformLocation(shader_program.active_shader, "model_Transform")
+        glUniformMatrix4fv(model_location, 1, GL_FALSE, glm.value_ptr(world_matrix))
+
+        model_location = glGetUniformLocation(shader_program.active_shader, "model_Color")
+        glUniform3f(model_location, *Application.model_color)
 
         glBindVertexArray(loaded_model.vao)
         glDrawElements(GL_TRIANGLES, len(loaded_model.indices), GL_UNSIGNED_INT, None)
 
-        shader_program_axis = shaders["AXIS"]
-
         glUseProgram(shader_program_axis.active_shader)
-        modelLocation = glGetUniformLocation(shader_program_axis.active_shader, "model_Transform")
-        glUniformMatrix4fv(modelLocation, 1, GL_FALSE, glm.value_ptr(world_matrix))
+
+        model_location = glGetUniformLocation(shader_program_axis.active_shader, "model_Transform")
+        glUniformMatrix4fv(model_location, 1, GL_FALSE, glm.value_ptr(world_matrix))
 
         glBindVertexArray(model_axis.vao)
         glDrawElements(GL_LINES, len(model_axis.indices), GL_UNSIGNED_INT, None)
